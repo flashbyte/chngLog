@@ -27,13 +27,6 @@ CONVENTIONAL_COMMIT_RE = re.compile(
     r'(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\((?P<scope>[\.\-\w]*)\))?: (?P<message>.*)'
 )
 
-
-# TODO: remove unwanted commits e.g. 'apply succeded'
-# TODO: Pull updates
-# TODO: create report branch and commit changelog
-# TODO: selcet tiemframe / tags
-# TODO: select branch
-
 # pylint: disable=line-too-long
 def parse_commit_summary(summary):
 
@@ -58,6 +51,11 @@ def sort_commit(commit_dict_list):
     commit_dict_list.sort(key=lambda a: str(a.get('scope')))
     commit_dict_list.sort(key=lambda a: a.get('type'))
 
+
+def drop_commit_types(commit_dict_list, types):
+    for commit in reversed(commit_dict_list):
+        if commit['type'] in types:
+            commit_dict_list.remove(commit)
 
 def create_markdown_output(commit_dict_list):
     if not commit_dict_list:
@@ -93,11 +91,18 @@ def main():
         "repository",
         help='directory of the repository',
     )
+    parser.add_argument(
+        '--exclude-type',
+        action='append',
+        help='excludes commit types in changelog'
+    )
     args = parser.parse_args()
 
     check_args(args)
 
     commits = collect_changelog_from_repo(args.repository)
+    if args.exclude_type:
+        drop_commit_types(commits, args.exclude_type)
     sort_commit(commits)
     print(create_markdown_output(commits))
 

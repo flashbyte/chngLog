@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
+import argparse
 import re
-from pathlib import Path
-from git import Repo
-
-# TODO! remove local path before push commit
-my_path=Path('../.')
+import os
+import sys
+import git
 
 SECTION_MARKDOWN = '\n## {c_type}\n'
 COMMIT_MARKDOWN = '* {c_scope:18} {c_message} \n'
@@ -47,7 +46,7 @@ def parse_commit_summary(summary):
 
 def collect_changelog_from_repo(repo_path):
     #creat branch and pull updats
-    repo = Repo(repo_path)
+    repo = git.Repo(repo_path)
     commits = []
     for commit in repo.iter_commits("master", max_count=100):
         commits.append(parse_commit_summary(commit.summary))
@@ -76,9 +75,29 @@ def create_markdown_output(commit_dict_list):
             output += COMMIT_MARKDOWN.format(c_scope='', c_message=commit['message'])
     return output
 
+# Sanity checks for cli input arguments
+def check_args(args):
+
+    # Direcorty existes?
+    if not os.path.exists(args.repository):
+        sys.exit('Path {} does not exist!!!'.format(args.repository))
+    # Directory is a git repo?
+    try:
+        git.Repo(args.repository)
+    except git.exc.InvalidGitRepositoryError:
+        sys.exit('Path {} not a valid git repository!!!'.format(args.repository))
 
 def main():
-    commits = collect_changelog_from_repo(my_path)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "repository",
+        help='directory of the repository',
+    )
+    args = parser.parse_args()
+
+    check_args(args)
+
+    commits = collect_changelog_from_repo(args.repository)
     sort_commit(commits)
     print(create_markdown_output(commits))
 

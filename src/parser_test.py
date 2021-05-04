@@ -1,12 +1,12 @@
-import pytest
-from main import parse_commit_summary
+import unittest
+from main import *
 
 
 
-class TestCommitHandler:
+class TestCommitHandler(unittest.TestCase):
 
-    def test_parse_commit_summary(self):
-        test_commits = {
+    def setUp(self):
+        self.test_commits = {
             'chore(k8s-1.19-prep): bump kube2iam versions': {
                 'type': 'chore',
                 'scope': 'k8s-1.19-prep',
@@ -30,6 +30,11 @@ class TestCommitHandler:
 
         }
 
-        for summary, result in test_commits.items():
-            assert parse_commit_summary(summary) == result
+    def test_parse_commit_summary(self):
+        for summary, result in self.test_commits.items():
+            self.assertEqual(parse_commit_summary(summary), result)
 
+
+
+if __name__ == '__main__':
+    unittest.main()

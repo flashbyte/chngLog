@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from datetime import datetime, timedelta
 import argparse
 import re
 import os
@@ -24,8 +25,9 @@ VALID_COMMIT_TYPES = [
 ]
 
 CONVENTIONAL_COMMIT_RE = re.compile(
-    r'(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\((?P<scope>[\.\-\w]*)\))?: (?P<message>.*)'
+    r'(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\((?P<scope>[\*\.\-\w]*)\))?: (?P<message>.*)'
 )
+
 
 # pylint: disable=line-too-long
 def parse_commit_summary(summary):
@@ -42,7 +44,9 @@ def collect_changelog_from_repo(repo_path):
     repo = git.Repo(repo_path)
     commits = []
     for commit in repo.iter_commits("master", max_count=100):
-        commits.append(parse_commit_summary(commit.summary))
+        parsed = parse_commit_summary(commit.summary)
+        parsed['datetime'] = commit.committed_datetime
+        commits.append(parsed)
     return commits
 
 
@@ -85,6 +89,20 @@ def check_args(args):
     except git.exc.InvalidGitRepositoryError:
         sys.exit('Path {} not a valid git repository!!!'.format(args.repository))
 
+    # Check if days only positive
+    if args.days and args.days < 0:
+        sys.exit('arg days must be positive')
+
+
+def drop_commits_before(commit_dict_list, days):
+    timezone = commit_dict_list[0]['datetime'].tzinfo
+    now = datetime.now(timezone)
+    before = now - timedelta(days=days)
+    for commit in reversed(commit_dict_list):
+        if commit['datetime'] < before:
+            commit_dict_list.remove(commit)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -96,6 +114,13 @@ def main():
         action='append',
         help='excludes commit types in changelog'
     )
+
+    parser.add_argument(
+        '--days',
+        help='Create changelog only for the last X days',
+        type=int,
+    )
+
     args = parser.parse_args()
 
     check_args(args)
@@ -103,6 +128,8 @@ def main():
     commits = collect_changelog_from_repo(args.repository)
     if args.exclude_type:
         drop_commit_types(commits, args.exclude_type)
+    if args.days:
+        drop_commits_before(commits, args.days)
     sort_commit(commits)
     print(create_markdown_output(commits))
 

@@ -28,7 +28,6 @@ CONVENTIONAL_COMMIT_RE = re.compile(
     r'(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\((?P<scope>[\*\.\-\w]*)\))?: (?P<message>.*)'
 )
 
-
 # pylint: disable=line-too-long
 def parse_commit_summary(summary):
 

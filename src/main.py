@@ -109,13 +109,13 @@ def main():
         help='directory of the repository',
     )
     parser.add_argument(
-        '--exclude-type',
+        '-et', '--exclude-type',
         action='append',
         help='excludes commit types in changelog'
     )
 
     parser.add_argument(
-        '--days',
+        '-d', '--days',
         help='Create changelog only for the last X days',
         type=int,
     )

@@ -5,6 +5,7 @@ import re
 import os
 import sys
 import git
+from git.exc import InvalidGitRepositoryError
 
 SECTION_MARKDOWN = '\n## {c_type}\n'
 COMMIT_MARKDOWN = '* {c_scope:18} {c_message} \n'
@@ -24,46 +25,72 @@ VALID_COMMIT_TYPES = [
     'test'
 ]
 
+# pylint: disable=line-too-long
 CONVENTIONAL_COMMIT_RE = re.compile(
     r'(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\((?P<scope>[\*\.\-\w]*)\))?: (?P<message>.*)'
 )
 
+
+def parse_commit_summary(summary):
+    """Parses a commit summary and return a dictionary with type, scope and message.
+
+    Args:
+      summary: str
+
+    Returns:
+      parsed commit(dict) : dict with keys type,commit and message
+
+    """
+    match = CONVENTIONAL_COMMIT_RE.match(summary)
+    if not match:
+        return {'type': 'ugly', 'scope': None, 'message': summary}
+
+    return CONVENTIONAL_COMMIT_RE.match(summary).groupdict()
+
+
 class Repo:
-    """docstring for Repo"""
+    """TODO: Some usefull docs"""
+
     def __init__(self, path):
-        super(Repo, self).__init__()
+        super().__init__()
         self.path = path
         self.repo = git.Repo(path)
         self.commits = []
-        self.collect_changelog_from_repo()
+        self.__collect_changelog_from_repo()
 
-    def collect_changelog_from_repo(self):
-        #creat branch and pull updats
-        for commit in self.repo.iter_commits("master", max_count=100): # FIXME: remove max_count
-            parsed = self.parse_commit_summary(commit.summary)
+    def __collect_changelog_from_repo(self):
+        """Collect commits and parses them"""
+        # Todo: creat branch and pull updats
+        # FIXME: remove max_count
+        for commit in self.repo.iter_commits("master", max_count=100):
+            parsed = parse_commit_summary(commit.summary)
             parsed['datetime'] = commit.committed_datetime
             self.commits.append(parsed)
 
-    # pylint: disable=line-too-long
-    def parse_commit_summary(self, summary):
-
-        match = CONVENTIONAL_COMMIT_RE.match(summary)
-        if not match:
-            return {'type': 'ugly', 'scope': None, 'message': summary}
-
-        return CONVENTIONAL_COMMIT_RE.match(summary).groupdict()
-
     def sort_commit(self):
+        """Sort commits by scope and type"""
         # TODO: Sort by typo priority
         self.commits.sort(key=lambda a: str(a.get('scope')))
         self.commits.sort(key=lambda a: a.get('type'))
 
     def drop_commit_types(self, types):
+        """Removes commit with given types
+
+        Args:
+          types: list of types to remove
+
+        """
         for commit in reversed(self.commits):
             if commit['type'] in types:
                 self.commits.remove(commit)
 
     def drop_commits_before(self, days):
+        """Removes commits for the last X days
+
+        Args:
+          days: int
+
+        """
         timezone = self.commits[0]['datetime'].tzinfo
         now = datetime.now(timezone)
         before = now - timedelta(days=days)
@@ -73,6 +100,14 @@ class Repo:
 
 
 def create_markdown_output(commit_dict_list):
+    """
+
+    Args:
+      commit_dict_list:
+
+    Returns:
+
+    """
     if not commit_dict_list:
         return None
 
@@ -83,13 +118,22 @@ def create_markdown_output(commit_dict_list):
             commit_type = commit["type"]
             output += SECTION_MARKDOWN.format(c_type=commit_type)
         if commit['scope']:
-            output += COMMIT_MARKDOWN.format(c_scope=commit['scope'], c_message=commit['message'])
+            output += COMMIT_MARKDOWN.format(
+                c_scope=commit['scope'], c_message=commit['message'])
         else:
-            output += COMMIT_MARKDOWN.format(c_scope='', c_message=commit['message'])
+            output += COMMIT_MARKDOWN.format(c_scope='',
+                                             c_message=commit['message'])
     return output
 
-# Sanity checks for cli input arguments
+#
+
+
 def check_args(args):
+    """Sanity checks for cli input arguments
+    Args:
+      args:
+
+    """
 
     # Direcorty existes?
     if not os.path.exists(args.repository):
@@ -97,7 +141,7 @@ def check_args(args):
     # Directory is a git repo?
     try:
         git.Repo(args.repository)
-    except git.exc.InvalidGitRepositoryError:
+    except InvalidGitRepositoryError:
         sys.exit('Path {} not a valid git repository!!!'.format(args.repository))
 
     # Check if days only positive
@@ -106,6 +150,7 @@ def check_args(args):
 
 
 def handle_cli_args():
+    """Creates cli params"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "repository",
@@ -128,16 +173,17 @@ def handle_cli_args():
     check_args(args)
     return args
 
+
 def main():
     args = handle_cli_args()
 
-    r = Repo(args.repository)
-    commits = r.commits
+    repository = Repo(args.repository)
+    commits = repository.commits
     if args.exclude_type:
-        r.drop_commit_types(args.exclude_type)
+        repository.drop_commit_types(args.exclude_type)
     if args.days:
-        r.drop_commits_before(args.days)
-    r.sort_commit()
+        repository.drop_commits_before(args.days)
+    repository.sort_commit()
     print(create_markdown_output(commits))
 
 

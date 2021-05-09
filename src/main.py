@@ -28,37 +28,49 @@ CONVENTIONAL_COMMIT_RE = re.compile(
     r'(?P<type>build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\((?P<scope>[\*\.\-\w]*)\))?: (?P<message>.*)'
 )
 
-# pylint: disable=line-too-long
-def parse_commit_summary(summary):
+class Repo:
+    """docstring for Repo"""
+    def __init__(self, path):
+        super(Repo, self).__init__()
+        self.path = path
+        self.repo = git.Repo(path)
+        self.commits = []
+        self.collect_changelog_from_repo()
 
-    match = CONVENTIONAL_COMMIT_RE.match(summary)
-    if not match:
-        return {'type': 'ugly', 'scope': None, 'message': summary}
+    def collect_changelog_from_repo(self):
+        #creat branch and pull updats
+        for commit in self.repo.iter_commits("master", max_count=100): # FIXME: remove max_count
+            parsed = self.parse_commit_summary(commit.summary)
+            parsed['datetime'] = commit.committed_datetime
+            self.commits.append(parsed)
 
-    return CONVENTIONAL_COMMIT_RE.match(summary).groupdict()
+    # pylint: disable=line-too-long
+    def parse_commit_summary(self, summary):
 
+        match = CONVENTIONAL_COMMIT_RE.match(summary)
+        if not match:
+            return {'type': 'ugly', 'scope': None, 'message': summary}
 
-def collect_changelog_from_repo(repo_path):
-    #creat branch and pull updats
-    repo = git.Repo(repo_path)
-    commits = []
-    for commit in repo.iter_commits("master", max_count=100):
-        parsed = parse_commit_summary(commit.summary)
-        parsed['datetime'] = commit.committed_datetime
-        commits.append(parsed)
-    return commits
+        return CONVENTIONAL_COMMIT_RE.match(summary).groupdict()
 
+    def sort_commit(self):
+        # TODO: Sort by typo priority
+        self.commits.sort(key=lambda a: str(a.get('scope')))
+        self.commits.sort(key=lambda a: a.get('type'))
 
-def sort_commit(commit_dict_list):
-    # Sort by typo priority
-    commit_dict_list.sort(key=lambda a: str(a.get('scope')))
-    commit_dict_list.sort(key=lambda a: a.get('type'))
+    def drop_commit_types(self, types):
+        for commit in reversed(self.commits):
+            if commit['type'] in types:
+                self.commits.remove(commit)
 
+    def drop_commits_before(self, days):
+        timezone = self.commits[0]['datetime'].tzinfo
+        now = datetime.now(timezone)
+        before = now - timedelta(days=days)
+        for commit in reversed(self.commits):
+            if commit['datetime'] < before:
+                self.commits.remove(commit)
 
-def drop_commit_types(commit_dict_list, types):
-    for commit in reversed(commit_dict_list):
-        if commit['type'] in types:
-            commit_dict_list.remove(commit)
 
 def create_markdown_output(commit_dict_list):
     if not commit_dict_list:
@@ -93,16 +105,7 @@ def check_args(args):
         sys.exit('arg days must be positive')
 
 
-def drop_commits_before(commit_dict_list, days):
-    timezone = commit_dict_list[0]['datetime'].tzinfo
-    now = datetime.now(timezone)
-    before = now - timedelta(days=days)
-    for commit in reversed(commit_dict_list):
-        if commit['datetime'] < before:
-            commit_dict_list.remove(commit)
-
-
-def main():
+def handle_cli_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "repository",
@@ -123,13 +126,18 @@ def main():
     args = parser.parse_args()
 
     check_args(args)
+    return args
 
-    commits = collect_changelog_from_repo(args.repository)
+def main():
+    args = handle_cli_args()
+
+    r = Repo(args.repository)
+    commits = r.commits
     if args.exclude_type:
-        drop_commit_types(commits, args.exclude_type)
+        r.drop_commit_types(args.exclude_type)
     if args.days:
-        drop_commits_before(commits, args.days)
-    sort_commit(commits)
+        r.drop_commits_before(args.days)
+    r.sort_commit()
     print(create_markdown_output(commits))
 
 
